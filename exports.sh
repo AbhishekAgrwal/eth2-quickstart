@@ -14,6 +14,11 @@ export EMAIL="chimera_defi@protonmail.com"
 
 export LOGIN_UNAME='eth'
 export YourSSHPortNumber='22'
+
+# Chain selection: which blockchain node to install in Phase 2
+# Valid values: 'ethereum' | 'monad'
+# Default is ethereum to preserve existing behaviour.
+export CHAIN='ethereum'
 export maxretry='3'
 export REPO_NAME="eth2-quickstart"
 
