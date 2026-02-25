@@ -43,75 +43,16 @@ setup_firewall() {
     local CHAIN_VAR="${CHAIN:-ethereum}"
 
     if [[ "$CHAIN_VAR" == "monad" ]]; then
-        log_info "Opening ports for Monad full node and SSH (port $SSH_PORT)..."
-        # Monad P2P: 8000 TCP+UDP, 8001 TCP (source: docs.monad.xyz/node-ops/full-node-installation)
-        setup_firewall_rules "$SSH_PORT/tcp" 8000/tcp 8001/tcp
-        ufw allow 8000/udp
-
-        # Anti-spam iptables rule recommended by official Monad docs.
-        # Drops small UDP packets on port 8000 (spam mitigation).
-        # WARNING: This rule does NOT persist across reboots. It is the operator's
-        # responsibility to persist it (e.g. via iptables-persistent). This is
-        # documented intentionally and left non-persistent per the official docs pattern.
-        log_info "Applying Monad iptables anti-spam rule (non-persistent, resets on reboot)..."
-        iptables -I INPUT -p udp --dport 8000 -m length --length 0:1400 -j DROP || \
-            log_warn "iptables anti-spam rule failed — install iptables if missing"
-
-        log_info "Monad firewall: opened SSH ($SSH_PORT), 8000/tcp, 8000/udp, 8001/tcp"
-        log_info "Note: iptables anti-spam rule is not persistent across reboots"
+        log_info "Opening SSH port $SSH_PORT for Monad operator access..."
+        # Monad P2P ports (8000/tcp, 8000/udp, 8001/tcp) and the iptables anti-spam rule
+        # are applied in monad_install.sh (Phase 2), where iptables-persistent is available
+        # to make the iptables rule persistent across reboots.
+        setup_firewall_rules "$SSH_PORT/tcp"
+        log_info "Monad firewall: SSH ($SSH_PORT) opened. P2P ports configured in monad_install.sh."
 
     elif [[ "$CHAIN_VAR" == "ethereum" ]]; then
         log_info "Opening ports for Ethereum clients and SSH (port $SSH_PORT)..."
         setup_firewall_rules 30303 13000/tcp 12000/udp "$SSH_PORT/tcp" 443/tcp
-
-        # Block outbound connections to private/reserved networks to prevent netscan abuse
-        # Skip in Docker only: container gateway (172.17.0.1) is in 172.16.0.0/12; blocking would
-        # break connectivity. On real servers we apply full rules. Docker E2E tests the rest.
-        if ! is_docker; then
-            log_info "Blocking outbound connections to private networks..."
-            log_info "This prevents netscan abuse warnings (updated Feb '23 from Erigon docs)"
-
-            # Define private network ranges to block
-            # Hetzner expected strict outbound blocks (from Erigon README)
-            private_networks=(
-                "0.0.0.0/8"            # "This" Network
-                "10.0.0.0/8"           # Private-Use Networks
-                "100.64.0.0/10"        # Carrier-Grade NAT (CGN)
-                "127.0.0.0/8"          # Loopback
-                "127.16.0.0/12"        # Loopback subset (from Erigon reference list, intentional overlap)
-                "169.254.0.0/16"       # Link Local
-                "172.16.0.0/12"        # Private-Use Networks
-                "192.0.0.0/24"         # IETF Protocol Assignments
-                "192.0.2.0/24"         # TEST-NET-1
-                "192.88.99.0/24"       # 6to4 Relay Anycast
-                "192.168.0.0/16"       # Private-Use Networks
-                "198.18.0.0/15"        # Device Benchmark Testing
-                "198.51.100.0/24"      # TEST-NET-2
-                "203.0.113.0/24"       # TEST-NET-3
-                "224.0.0.0/4"          # Multicast
-                "240.0.0.0/4"          # Reserved for Future Use
-                "255.255.255.255/32"   # Limited Broadcast
-            )
-
-            # Known problematic subnets that trigger Hetzner abuse reports
-            # These are public IP ranges where aggressive P2P discovery causes issues
-            # Add subnets here as needed based on abuse reports
-            problematic_subnets=(
-                "212.192.16.0/22"      # Vultr Frankfurt - triggers Hetzner netscan detection (Nov 2025)
-            )
-
-            for network in "${private_networks[@]}"; do
-                ufw deny out on any to "$network" || log_warn "Failed to block outbound to $network"
-            done
-
-            # Block problematic subnets (public IPs that cause abuse reports)
-            log_info "Blocking problematic subnets that trigger abuse reports..."
-            for subnet in "${problematic_subnets[@]}"; do
-                ufw deny out on any to "$subnet" proto udp || log_warn "Failed to block outbound UDP to $subnet"
-            done
-        else
-            log_info "Skipping private network blocks in container (would break Docker networking)"
-        fi
 
         # Block specific ports (updates from Prysm docs Feb '23)
         log_info "Blocking specific ports for security..."
@@ -120,19 +61,66 @@ setup_firewall() {
         ufw deny in 8551/tcp || log_warn "Failed to deny port 8551/tcp"
         ufw deny in 8545/tcp || log_warn "Failed to deny port 8545/tcp"
 
-        log_info "✓ Firewall configuration completed!"
-        log_info "UFW firewall is now enabled with Ethereum client and security rules"
+        log_info "✓ Ethereum firewall ports configured!"
         log_info "Allowed ports: $SSH_PORT (SSH), 443 (HTTPS), 30303 (Ethereum P2P), 12000/13000 (Prysm)"
-        if is_docker; then
-            log_info "Blocked: Specific ports (4000, 3500, 8551, 8545)"
-        else
-            log_info "Blocked: Private networks, problematic subnets (UDP), specific ports (4000, 3500, 8551, 8545)"
-        fi
+        log_info "Blocked inbound: 4000, 3500, 8551, 8545"
 
     else
         log_error "Unknown CHAIN value: '$CHAIN_VAR'. Valid values: ethereum, monad"
         exit 1
     fi
+
+    # Block outbound connections to private/reserved networks — universal for all chains.
+    # Prevents netscan abuse warnings regardless of whether running Ethereum or Monad.
+    # Skip in Docker only: container gateway (172.17.0.1) is in 172.16.0.0/12; blocking would
+    # break connectivity. On real servers we apply full rules. Docker E2E tests the rest.
+    if ! is_docker; then
+        log_info "Blocking outbound connections to private networks..."
+        log_info "This prevents netscan abuse warnings (updated Feb '23 from Erigon docs)"
+
+        # Define private network ranges to block
+        # Hetzner expected strict outbound blocks (from Erigon README)
+        private_networks=(
+            "0.0.0.0/8"            # "This" Network
+            "10.0.0.0/8"           # Private-Use Networks
+            "100.64.0.0/10"        # Carrier-Grade NAT (CGN)
+            "127.0.0.0/8"          # Loopback
+            "127.16.0.0/12"        # Loopback subset (from Erigon reference list, intentional overlap)
+            "169.254.0.0/16"       # Link Local
+            "172.16.0.0/12"        # Private-Use Networks
+            "192.0.0.0/24"         # IETF Protocol Assignments
+            "192.0.2.0/24"         # TEST-NET-1
+            "192.88.99.0/24"       # 6to4 Relay Anycast
+            "192.168.0.0/16"       # Private-Use Networks
+            "198.18.0.0/15"        # Device Benchmark Testing
+            "198.51.100.0/24"      # TEST-NET-2
+            "203.0.113.0/24"       # TEST-NET-3
+            "224.0.0.0/4"          # Multicast
+            "240.0.0.0/4"          # Reserved for Future Use
+            "255.255.255.255/32"   # Limited Broadcast
+        )
+
+        # Known problematic subnets that trigger Hetzner abuse reports
+        # These are public IP ranges where aggressive P2P discovery causes issues
+        # Add subnets here as needed based on abuse reports
+        problematic_subnets=(
+            "212.192.16.0/22"      # Vultr Frankfurt - triggers Hetzner netscan detection (Nov 2025)
+        )
+
+        for network in "${private_networks[@]}"; do
+            ufw deny out on any to "$network" || log_warn "Failed to block outbound to $network"
+        done
+
+        # Block problematic subnets (public IPs that cause abuse reports)
+        log_info "Blocking problematic subnets that trigger abuse reports..."
+        for subnet in "${problematic_subnets[@]}"; do
+            ufw deny out on any to "$subnet" proto udp || log_warn "Failed to block outbound UDP to $subnet"
+        done
+    else
+        log_info "Skipping private network blocks in container (would break Docker networking)"
+    fi
+
+    log_info "✓ Firewall configuration completed!"
 }
 
 # Function 2: Setup Fail2ban

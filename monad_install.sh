@@ -31,6 +31,18 @@ if [[ -z "${MONAD_TRIEDB_DRIVE:-}" ]]; then
     exit 1
 fi
 
+# Step 1b: Verify system has sufficient RAM for Monad hugepages requirement.
+# Monad requires 2048 hugepages × 2 MiB = 4 GiB reserved just for hugepages, plus
+# operating overhead. Minimum usable system RAM is 8 GiB.
+MIN_RAM_KB=$((8 * 1024 * 1024))
+AVAILABLE_RAM_KB=$(awk '/MemTotal/ {print $2}' /proc/meminfo)
+if [[ "${AVAILABLE_RAM_KB}" -lt "${MIN_RAM_KB}" ]]; then
+    log_error "Insufficient RAM: ${AVAILABLE_RAM_KB} KiB available, ${MIN_RAM_KB} KiB required."
+    log_error "Monad requires at least 8 GiB RAM for hugepages and node operation."
+    exit 1
+fi
+log_info "RAM check passed: ${AVAILABLE_RAM_KB} KiB available."
+
 # Step 2: Verify drive has no mountpoints before touching it
 log_info "Verifying MONAD_TRIEDB_DRIVE=${MONAD_TRIEDB_DRIVE} is safe to format..."
 if lsblk -o MOUNTPOINT "${MONAD_TRIEDB_DRIVE}" 2>/dev/null | grep -qv '^$\|MOUNTPOINT'; then
@@ -45,6 +57,19 @@ log_info "Drive ${MONAD_TRIEDB_DRIVE} has no mountpoints. Safe to proceed."
 log_info "Updating system and installing dependencies..."
 sudo apt-get update -y
 sudo apt-get install -y curl nvme-cli aria2 jq iptables-persistent
+
+# Open Monad P2P ports and persist the anti-spam iptables rule now that
+# iptables-persistent is installed. Phase 1 (consolidated_security.sh) opened SSH only;
+# we layer the chain-specific rules on top here in Phase 2.
+log_info "Opening Monad P2P firewall ports..."
+sudo ufw allow 8000/tcp
+sudo ufw allow 8000/udp
+sudo ufw allow 8001/tcp
+
+log_info "Applying and persisting Monad iptables anti-spam rule..."
+sudo iptables -I INPUT -p udp --dport 8000 -m length --length 0:1400 -j DROP
+sudo netfilter-persistent save
+log_info "iptables anti-spam rule applied and persisted across reboots."
 
 # Step 4: Add Monad APT repository and install package
 log_info "Configuring Monad APT repository..."
