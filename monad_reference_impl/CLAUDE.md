@@ -353,7 +353,7 @@ purpose, format, and destination. Implement exactly as below.
 
 ```bash
 log_info "Generating keystore password..."
-sudo sed -i "s|^KEYSTORE_PASSWORD=$|KEYSTORE_PASSWORD='$(openssl rand -base64 32)'|" \
+sudo sed -i "s|^KEYSTORE_PASSWORD=.*$|KEYSTORE_PASSWORD='$(openssl rand -base64 32)'|" \
     /home/monad/.env
 sudo mkdir -p /opt/monad/backup/
 KEYSTORE_PASS=$(sudo grep KEYSTORE_PASSWORD /home/monad/.env | cut -d= -f2)
