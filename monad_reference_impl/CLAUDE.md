@@ -514,7 +514,8 @@ they seem like good ideas or the reference scripts include them:
 ## Reference Directory — What the Files Are and Their Caveats
 
 The `monad_reference_impl/` directory alongside this file contains reference scripts from a
-prior research phase. They are **read-only reference material**, not code to copy directly.
+prior research phase. They are AI-generated drafts from a prior scoping phase — unverified and untested. Use them only for structural inspiration. The authoritative source for all implementation decisions is this CLAUDE.md and the official Monad docs at docs.monad.xyz
+
 
 | File | What it is | Caveat |
 |------|-----------|--------|
