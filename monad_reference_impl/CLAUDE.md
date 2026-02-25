@@ -519,7 +519,7 @@ prior research phase. They are AI-generated drafts from a prior scoping phase �
 
 | File | What it is | Caveat |
 |------|-----------|--------|
-| `install_sysctl.sh` | Reference for sysctl values | Use values verbatim, they match official docs |
+| `install_sysctl.sh` | Reference for sysctl values | Sysctl values were independently verified against official docs — see Step 10 above for the canonical values to use |
 | `create_monad_user.sh` | Reference for user creation pattern | The official docs use `useradd -m` not `-r -m`; follow the official docs pattern in Step 5 above |
 | `install_firewall_ufw.sh` | Reference for UFW pattern | Ports shown here are wrong — use 8000/8001 from official docs |
 | `config.toml.example` | Old config template | **Port values 26656/26657 in this file are wrong.** Ignore them entirely. They are stale Cosmos placeholders. |
