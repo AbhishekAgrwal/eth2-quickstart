@@ -244,8 +244,13 @@ log_info "Drive ${MONAD_TRIEDB_DRIVE} has no mountpoints. Safe to proceed."
 
 ```bash
 sudo apt-get update -y
-sudo install_dependencies curl nvme-cli aria2 jq iptables-persistent
+sudo apt-get install -y curl nvme-cli aria2 jq iptables-persistent
 ```
+
+Note: Do NOT use `sudo install_dependencies ...` here. `install_dependencies` is a shell
+function from `lib/common_functions.sh`. `sudo` spawns a subprocess that does not inherit
+parent shell functions — it will fail with `command not found`. Use `sudo apt-get install -y`
+directly for all package installs in this script.
 
 Note: `iptables-persistent` is installed here so the iptables anti-spam rule set during
 Phase 1 (if Monad was selected then) can be made persistent by the operator. Installing the
@@ -340,6 +345,12 @@ These URLs are the official Monad infrastructure bucket. Do not substitute them.
 
 **Step 8: Generate keystore password**
 
+Note: Do NOT use `ensure_jwt_secret` from `lib/common_functions.sh` here. That function
+generates `openssl rand -hex 32` saved to a standalone file — it is for Ethereum Engine API
+JWT authentication. The Monad keystore password is base64-encoded, must be injected into
+`/home/monad/.env` via `sed`, and is owned by the `monad` service user. Entirely different
+purpose, format, and destination. Implement exactly as below.
+
 ```bash
 log_info "Generating keystore password..."
 sudo sed -i "s|^KEYSTORE_PASSWORD=$|KEYSTORE_PASSWORD='$(openssl rand -base64 32)'|" \
@@ -352,6 +363,12 @@ log_info "Keystore password generated and backed up to /opt/monad/backup/keystor
 ```
 
 **Step 9: Generate BLS and SECP keys**
+
+Note: There is no common helper function for this. `monad-keystore create` is a Monad-specific
+binary installed by the `monad` APT package. Ethereum validator key helpers in this repo
+generate Ethereum-format keys and are not compatible. Implement exactly as below. The
+`sudo bash << 'KEYEOF'` heredoc pattern is correct and intentional — it runs `monad-keystore`
+as root so it can write to paths owned by the `monad` service user.
 
 ```bash
 log_info "Generating monad keystore (BLS + SECP keys)..."
@@ -401,29 +418,25 @@ sudo sysctl -p /etc/sysctl.d/99-monad.conf
 log_info "Monad sysctl applied."
 ```
 
-**Step 11: Install OTEL collector (metrics)**
+**~~Step 11: Install OTEL collector (metrics)~~ — OUT OF SCOPE, DO NOT IMPLEMENT**
 
-```bash
-OTEL_VERSION="0.139.0"
-OTEL_PACKAGE="https://github.com/open-telemetry/opentelemetry-collector-releases/releases/download/v${OTEL_VERSION}/otelcol_${OTEL_VERSION}_linux_amd64.deb"
-log_info "Installing OTEL collector v${OTEL_VERSION}..."
-curl -fsSL "${OTEL_PACKAGE}" -o /tmp/otelcol_linux_amd64.deb
-sudo dpkg -i /tmp/otelcol_linux_amd64.deb
-sudo cp /opt/monad/scripts/otel-config.yaml /etc/otelcol/config.yaml
-sudo systemctl restart otelcol
-log_info "OTEL collector installed and configured."
-```
+OTEL (OpenTelemetry) is a metrics collector. It is excluded from this implementation round
+because the source of its config file (`/opt/monad/scripts/otel-config.yaml`) is unverified
+and the service has not been reviewed for security hardening. Do not install it.
 
-**Step 12: Enable and start all Monad systemd services**
+**Step 11: Enable and start all Monad systemd services**
+
+Note: `otelcol` has been removed from this list (see above). Only start services that are
+known to be installed and configured by prior steps.
 
 ```bash
 log_info "Enabling and starting Monad systemd services..."
-for svc in monad-bft monad-execution monad-rpc monad-cruft otelcol; do
+for svc in monad-bft monad-execution monad-rpc monad-cruft; do
     enable_and_start_systemd_service "$svc"
 done
 ```
 
-**Step 13: Smoke check**
+**Step 12: Smoke check**
 
 Wait up to 30 seconds for the RPC to come up, then query it:
 
@@ -456,7 +469,7 @@ fi
 Note: a non-response at this stage does not mean failure. The node may still be starting up
 or beginning initial sync. The script should not exit 1 on RPC timeout — it logs and continues.
 
-**Step 14: Print completion summary**
+**Step 13: Print completion summary**
 
 ```bash
 cat << EOF
@@ -468,7 +481,6 @@ Services installed:
   monad-execution  (execution client)
   monad-rpc        (RPC server)
   monad-cruft      (hourly cleanup)
-  otelcol          (metrics collector)
 
 To check status:
   sudo systemctl status monad-bft
@@ -501,6 +513,8 @@ they seem like good ideas or the reference scripts include them:
 
 - Monitoring stack (Prometheus, Grafana, Loki, Alertmanager) — reference scripts have it,
   we are not building it
+- OTEL (OpenTelemetry) collector — excluded pending security review and verification that
+  the config file (`/opt/monad/scripts/otel-config.yaml`) is shipped by the APT package
 - Caddy reverse proxy — not needed for full node testing
 - Validator key registration — requires MON tokens and VDP approval, not an infra task
 - `monad-status` service (the Python HTTP status server from reference scripts) — not needed
