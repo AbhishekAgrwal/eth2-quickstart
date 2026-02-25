@@ -133,7 +133,7 @@ log_info "Keystore password generated and backed up to /opt/monad/backup/keystor
 log_info "Generating monad keystore (BLS + SECP keys)..."
 sudo bash << 'KEYEOF'
 set -e
-source /home/monad/.env
+. /home/monad/.env
 monad-keystore create \
     --key-type secp \
     --keystore-path /home/monad/monad-bft/config/id-secp \
