@@ -29,6 +29,10 @@ Commit `bun.lock`, never `package-lock.json`.
 
 `type(scope): description` — types: `feat`, `fix`, `refactor`, `docs`, `test`, `chore`, `style`, `perf`
 
+### 4. Default Branch Is `master`
+
+The upstream default branch is `master` (not `main`). Use `master` as the base for PRs.
+
 ---
 
 ## Architecture
