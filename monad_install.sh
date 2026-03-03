@@ -56,7 +56,7 @@ log_info "Drive ${MONAD_TRIEDB_DRIVE} has no mountpoints. Safe to proceed."
 # Do NOT use 'sudo install_dependencies' — shell functions are not inherited by sudo subprocesses
 log_info "Updating system and installing dependencies..."
 sudo apt-get update -y
-sudo apt-get install -y curl nvme-cli aria2 jq iptables-persistent
+sudo apt-get install -y curl nvme-cli aria2 jq parted iptables-persistent
 
 # Open Monad P2P ports and persist the anti-spam iptables rule now that
 # iptables-persistent is installed. Phase 1 (consolidated_security.sh) opened SSH only;
